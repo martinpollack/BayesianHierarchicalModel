@@ -1,0 +1,56 @@
+---
+title: "Initial Models Bayesian Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(rethinking)
+Data <- read.csv("merged.csv")
+```
+
+
+
+```{r}
+twocities <- filter(Data, (city == "Berlin" | city == "Singapore"))
+
+m1 <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city],
+  alpha ~ dnorm(0, 200),
+  alpha_city[city] ~ dnorm(0, sigma_city),
+  sigma_city ~ dcauchy(0,2),
+  sigma ~ dcauchy (0,2)
+  ),
+  data = twocities
+)
+precis(m1, depth =2)
+
+threecities <- filter(Data, (city == "Berlin" | city == "Singapore" | city == "New York"))
+                      
+m2 <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city] + alpha_neighborhood[neighbourhood_group_cleansed],
+  alpha ~ dnorm(0, 200),
+  alpha_city[city] ~ dnorm(0, sigma_city),
+  alpha_neighborhood[neighbourhood_group_cleansed] ~ dnorm(0, sigma_neigh),
+  sigma_city ~ dcauchy(0,2),
+  sigma_neigh ~ dcauchy(0, 2),
+  sigma ~ dcauchy (0,2)
+  ),
+  data = threecities
+)
+precis(m2, depth =2)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
