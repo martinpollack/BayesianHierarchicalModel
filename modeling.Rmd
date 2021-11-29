@@ -1,0 +1,223 @@
+---
+title: "Initial Models Bayesian Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(rethinking)
+data <- read.csv("Data/merged.csv")
+data <- data[!is.na(data$price),]
+data$city_factor <- as.integer(as.factor(data$city))
+data$neigh_group_factor <- as.integer(as.factor(data$neighbourhood_group_cleansed))
+
+data <- data[!is.na(data$bedrooms) & !is.na(data$bathrooms) & !is.na(data$accommodates) & data$host_is_superhost != "" & !is.na(data$number_of_reviews),]
+
+data$host_is_superhost <- as.numeric(as.factor(data$host_is_superhost)) - 1
+
+#ny <- data[data$city=="New York",]
+#ny$neigh_group_factor <- as.integer(as.factor(ny$neighbourhood_group_cleansed))
+```
+
+```{r}
+noHierarch <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor],
+    alpha ~ dnorm(0, 200),
+    alpha_city[city_factor] ~ dnorm(0, 100),
+    alpha_neighborhood[neigh_group_factor] ~ dnorm(0, 100),
+    sigma ~ dcauchy (0,2)
+  ),
+  data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+
+precis(noHierarch, depth=2)
+```
+
+```{r}
+varyIntercept <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor],
+    alpha ~ dnorm(0, 200),
+    alpha_city[city_factor] ~ dnorm(0, sigma_city),
+    alpha_neighborhood[neigh_group_factor] ~ dnorm(0, sigma_neigh),
+    sigma_city ~ dcauchy(0, 2),
+    sigma_neigh ~ dcauchy(0, 2),
+    sigma ~ dcauchy (0, 2)
+  ),
+  data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+precis(varyIntercept, depth=2)
+```
+
+```{r}
+compare(noHierarch, varyIntercept)
+```
+
+```{r}
+#This chunk will be the code to run for a fixed effect model with predictors
+bedBathAcomFixed <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor] + 
+      bBed * bedrooms + bBath * bathrooms + bAcom * accommodates,
+    alpha ~ dnorm(0, 200),
+    alpha_city[city_factor] ~ dnorm(0, sigma_city),
+    alpha_neighborhood[neigh_group_factor] ~ dnorm(0, sigma_neigh),
+    sigma_city ~ dcauchy(0, 2),
+    bBath ~ dnorm(10, 20),
+    bBed ~ dnorm(10, 20),
+    bAcom ~ dnorm(10, 20),
+    sigma_neigh ~ dcauchy(0, 2),
+    sigma ~ dcauchy (0, 2)
+  ),
+  data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+
+precis(bedBathAcomFixed, depth=2)
+
+compare(noHierarch, varyIntercept, bedBathAcomFixed)
+
+## This is a model that just does reviews
+mreviewsfixed <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor] + 
+      bS * host_is_superhost + bR * number_of_reviews,
+    alpha ~ dnorm(0, 200),
+    alpha_city[city_factor] ~ dnorm(0, sigma_city),
+    alpha_neighborhood[neigh_group_factor] ~ dnorm(0, sigma_neigh),
+    bS ~ dnorm(10, 20),
+    bR ~ dnorm(10, 20),
+    sigma_city ~ dcauchy(0, 2),
+    sigma_neigh ~ dcauchy(0, 2),
+    sigma ~ dcauchy (0, 2)
+  ),
+  data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+
+precis(mreviewsfixed, depth=2)
+```
+
+```{r}
+compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed)
+```
+
+```{r}
+bedBathAcomVary <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- A + BED*bedrooms + BATH*bathrooms + ACOM*accommodates,
+    A    <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor],
+    BED  <- bed + bed_city[city_factor] + bed_neighborhood[neigh_group_factor],
+    BATH <- bath + bath_city[city_factor] + bath_neighborhood[neigh_group_factor],
+    ACOM <- acom + acom_city[city_factor] + acom_neighborhood[neigh_group_factor],
+    alpha ~ dnorm(120, 100),
+    bed ~ dnorm(30, 30),
+    bath ~ dnorm(30, 30),
+    acom ~ dnorm(30, 30),
+    c(alpha_city, bed_city, bath_city, acom_city)[city_factor] ~ dmvnormNC(sigma_city, Rho_city),
+    c(alpha_neighborhood, bed_neighborhood, bath_neighborhood, acom_neighborhood)[neigh_group_factor] ~ dmvnormNC(sigma_neigh, Rho_neigh),
+    sigma_city ~ dcauchy(0, 2),
+    sigma_neigh ~ dcauchy(0, 2),
+    Rho_city ~ dlkjcorr(2),
+    Rho_neigh ~ dlkjcorr(2),
+    sigma ~ dcauchy (0, 2)
+  ),
+  data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+
+precis(bedBathAcomVary, depth = 2)
+
+compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed, bedBathAcomVary)
+```
+
+```{r}
+bedBathAcomHostReviewsVary <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- A + BED*bedrooms + BATH*bathrooms + ACOM*accommodates + SUPER*host_is_superhost + REVIEWS*number_of_reviews,
+    A    <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor],
+    BED  <- bed + bed_city[city_factor] + bed_neighborhood[neigh_group_factor],
+    BATH <- bath + bath_city[city_factor] + bath_neighborhood[neigh_group_factor],
+    ACOM <- acom + acom_city[city_factor] + acom_neighborhood[neigh_group_factor],
+    SUPER <- super + super_city[city_factor] + super_neighborhood[neigh_group_factor],
+    REVIEWS <- reviews + reviews_city[city_factor] + reviews_neighborhood[neigh_group_factor],
+    alpha ~ dnorm(120, 100),
+    bed ~ dnorm(30, 30),
+    bath ~ dnorm(30, 30),
+    acom ~ dnorm(30, 30),
+    super ~ dnorm(10, 30),
+    reviews ~ dnorm(10, 30),
+    c(alpha_city, bed_city, bath_city, acom_city, super_city, reviews_city)[city_factor] ~ dmvnormNC(sigma_city, Rho_city),
+    c(alpha_neighborhood, bed_neighborhood, bath_neighborhood, acom_neighborhood, super_neighborhood, reviews_neighborhood)[neigh_group_factor] ~ dmvnormNC(sigma_neigh, Rho_neigh),
+    sigma_city ~ dcauchy(0, 2),
+    sigma_neigh ~ dcauchy(0, 2),
+    Rho_city ~ dlkjcorr(2),
+    Rho_neigh ~ dlkjcorr(2),
+    sigma ~ dcauchy (0, 2)
+  ),
+  data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+
+precis(bedBathAcomHostReviewsVary, depth = 2)
+
+compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed, bedBathAcomVary, bedBathAcomHostReviewsVary)
+```
+
+```{r}
+
+#This chunk will be the code to run for a fixed effect model with a predictor for room type as well as all the predictors, bed, bath, and acom
+threecities$Entireplace <- ifelse(threecities$room_type == "Entire home/apt", 1, 0)
+threecities$Privateroom <- ifelse(threecities$room_type == "Private room", 1, 0)
+threecities$Sharedroom <- ifelse(threecities$room_type == "Shared room", 1, 0)
+threecities$Hotelroom <- ifelse(threecities$room_type == "Hotel room", 1, 0)
+mbedbathfixed <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city] + alpha_neighborhood[neighbourhood_group_cleansed] + 
+      bBed * bedrooms + bBath * bathrooms + bAcom * accomodates + bPriv * Privateroom +
+      bShared * Sharedroom + bHotel * Hotelroom,
+    alpha ~ dnorm(0, 200),
+    alpha_city[city] ~ dnorm(0, sigma_city),
+    alpha_neighborhood[neighbourhood_group_cleansed] ~ dnorm(0, sigma_neigh),
+    sigma_city ~ dcauchy(0,5),
+    bBath ~ dnorm(10, 20),
+    bBed ~ dnorm(10, 20),
+    bAcom ~ dnorm(10, 20),
+    bPriv ~ dnorm(0, 20),
+    bShared ~ dnorm(0, 20),
+    bHotel ~ dnorm(0, 20)
+    sigma_neigh ~ dcauchy(0, 5),
+    sigma ~ dcauchy (0,5)
+  ),
+  data = threecities, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+## This is a model with all the predictors (except ammentities)
+mall <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city] + alpha_neighborhood[neighbourhood_group_cleansed] + 
+      bBed * bedrooms + bBath * bathrooms + bAcom * accomodates + bPriv * Privateroom +
+      bShared * Sharedroom + bHotel * Hotelroom + bS * host_is_superhost + bR *  review_scores_rating,
+    alpha ~ dnorm(0, 200),
+    alpha_city[city] ~ dnorm(0, sigma_city),
+    alpha_neighborhood[neighbourhood_group_cleansed] ~ dnorm(0, sigma_neigh),
+    sigma_city ~ dcauchy(0,5),
+    bBath ~ dnorm(10, 20),
+    bBed ~ dnorm(10, 20),
+    bAcom ~ dnorm(10, 20),
+    bPriv ~ dnorm(0, 20),
+    bShared ~ dnorm(0, 20),
+    bHotel ~ dnorm(0, 20),
+    bS ~ dnorm(10, 20),
+    bR ~ dnorm(10, 20),
+    sigma_neigh ~ dcauchy(0, 5),
+    sigma ~ dcauchy (0,5)
+  ),
+  data = threecities, chains = 4, warmup = 1000, iter = 4000, cores = 4
+)
+unique(Data$room_type)
+```
