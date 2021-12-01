@@ -6,17 +6,15 @@ output: html_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(rethinking)
+setwd("~/BayesianHierarchicalModel")
 data <- read.csv("Data/merged.csv")
 data <- data[!is.na(data$price),]
 data$city_factor <- as.integer(as.factor(data$city))
 data$neigh_group_factor <- as.integer(as.factor(data$neighbourhood_group_cleansed))
 
-data <- data[!is.na(data$bedrooms) & !is.na(data$bathrooms) & !is.na(data$accommodates) & data$host_is_superhost != "" & !is.na(data$number_of_reviews),]
+data <- data[!is.na(data$bedrooms) & !is.na(data$bathrooms) & !is.na(data$beds) & data$host_is_superhost != "" & !is.na(data$number_of_reviews),]
 
 data$host_is_superhost <- as.numeric(as.factor(data$host_is_superhost)) - 1
-
-#ny <- data[data$city=="New York",]
-#ny$neigh_group_factor <- as.integer(as.factor(ny$neighbourhood_group_cleansed))
 ```
 
 ```{r}
@@ -33,7 +31,10 @@ noHierarch <- map2stan(
 )
 
 precis(noHierarch, depth=2)
+
+save(noHierarch, file="Data/RData/noHierarch.RDS")
 ```
+
 
 ```{r}
 varyIntercept <- map2stan(
@@ -50,6 +51,8 @@ varyIntercept <- map2stan(
   data = data, chains = 4, warmup = 1000, iter = 4000, cores = 4
 )
 precis(varyIntercept, depth=2)
+
+save(varyIntercept, "Data/RData/varyIntercept.RDS")
 ```
 
 ```{r}
@@ -62,14 +65,14 @@ bedBathAcomFixed <- map2stan(
   alist(
     price ~ dnorm(mu, sigma),
     mu <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor] + 
-      bBed * bedrooms + bBath * bathrooms + bAcom * accommodates,
+      bBedrooms * bedrooms + bBath * bathrooms + bBeds * beds,
     alpha ~ dnorm(0, 200),
     alpha_city[city_factor] ~ dnorm(0, sigma_city),
     alpha_neighborhood[neigh_group_factor] ~ dnorm(0, sigma_neigh),
     sigma_city ~ dcauchy(0, 2),
     bBath ~ dnorm(10, 20),
-    bBed ~ dnorm(10, 20),
-    bAcom ~ dnorm(10, 20),
+    bBedrooms ~ dnorm(10, 20),
+    bBeds ~ dnorm(10, 20),
     sigma_neigh ~ dcauchy(0, 2),
     sigma ~ dcauchy (0, 2)
   ),
@@ -77,6 +80,8 @@ bedBathAcomFixed <- map2stan(
 )
 
 precis(bedBathAcomFixed, depth=2)
+
+save(bedBathAcomFixed,  "Data/RData/bedBathAcomFixed.RDS")
 
 compare(noHierarch, varyIntercept, bedBathAcomFixed)
 
@@ -99,11 +104,12 @@ mreviewsfixed <- map2stan(
 )
 
 precis(mreviewsfixed, depth=2)
-```
 
-```{r}
+save(mreviewsfixed, "Data/RData/mreviewsfixed.RDS")
+
 compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed)
 ```
+
 
 ```{r}
 bedBathAcomVary <- map2stan(
@@ -111,15 +117,15 @@ bedBathAcomVary <- map2stan(
     price ~ dnorm(mu, sigma),
     mu <- A + BED*bedrooms + BATH*bathrooms + ACOM*accommodates,
     A    <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor],
-    BED  <- bed + bed_city[city_factor] + bed_neighborhood[neigh_group_factor],
+    BEDROOM  <- bedroom + bedroom_city[city_factor] + bedroom_neighborhood[neigh_group_factor],
     BATH <- bath + bath_city[city_factor] + bath_neighborhood[neigh_group_factor],
-    ACOM <- acom + acom_city[city_factor] + acom_neighborhood[neigh_group_factor],
+    BED <- bed + bed_city[city_factor] + bed_neighborhood[neigh_group_factor],
     alpha ~ dnorm(120, 100),
     bed ~ dnorm(30, 30),
     bath ~ dnorm(30, 30),
-    acom ~ dnorm(30, 30),
-    c(alpha_city, bed_city, bath_city, acom_city)[city_factor] ~ dmvnormNC(sigma_city, Rho_city),
-    c(alpha_neighborhood, bed_neighborhood, bath_neighborhood, acom_neighborhood)[neigh_group_factor] ~ dmvnormNC(sigma_neigh, Rho_neigh),
+    bedrooms ~ dnorm(30, 30),
+    c(alpha_city, bedroom_city, bath_city, bed_city)[city_factor] ~ dmvnormNC(sigma_city, Rho_city),
+    c(alpha_neighborhood, bedroom_neighborhood, bath_neighborhood, bed_neighborhood)[neigh_group_factor] ~ dmvnormNC(sigma_neigh, Rho_neigh),
     sigma_city ~ dcauchy(0, 2),
     sigma_neigh ~ dcauchy(0, 2),
     Rho_city ~ dlkjcorr(2),
@@ -131,6 +137,8 @@ bedBathAcomVary <- map2stan(
 
 precis(bedBathAcomVary, depth = 2)
 
+save(bedBathAcomVary, "Data/RData/bedBathAcomVary.RDS")
+
 compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed, bedBathAcomVary)
 ```
 
@@ -140,19 +148,19 @@ bedBathAcomHostReviewsVary <- map2stan(
     price ~ dnorm(mu, sigma),
     mu <- A + BED*bedrooms + BATH*bathrooms + ACOM*accommodates + SUPER*host_is_superhost + REVIEWS*number_of_reviews,
     A    <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor],
-    BED  <- bed + bed_city[city_factor] + bed_neighborhood[neigh_group_factor],
+    BEDROOM  <- bedroom + bedroom_city[city_factor] + bedroom_neighborhood[neigh_group_factor],
     BATH <- bath + bath_city[city_factor] + bath_neighborhood[neigh_group_factor],
-    ACOM <- acom + acom_city[city_factor] + acom_neighborhood[neigh_group_factor],
+    BED <- bed + bed_city[city_factor] + bed_neighborhood[neigh_group_factor],
     SUPER <- super + super_city[city_factor] + super_neighborhood[neigh_group_factor],
     REVIEWS <- reviews + reviews_city[city_factor] + reviews_neighborhood[neigh_group_factor],
     alpha ~ dnorm(120, 100),
-    bed ~ dnorm(30, 30),
+    bedroom ~ dnorm(30, 30),
     bath ~ dnorm(30, 30),
-    acom ~ dnorm(30, 30),
+    bed ~ dnorm(30, 30),
     super ~ dnorm(10, 30),
     reviews ~ dnorm(10, 30),
-    c(alpha_city, bed_city, bath_city, acom_city, super_city, reviews_city)[city_factor] ~ dmvnormNC(sigma_city, Rho_city),
-    c(alpha_neighborhood, bed_neighborhood, bath_neighborhood, acom_neighborhood, super_neighborhood, reviews_neighborhood)[neigh_group_factor] ~ dmvnormNC(sigma_neigh, Rho_neigh),
+    c(alpha_city, bedroom_city, bath_city, bed_city, super_city, reviews_city)[city_factor] ~ dmvnormNC(sigma_city, Rho_city),
+    c(alpha_neighborhood, bedroom_neighborhood, bath_neighborhood, bed_neighborhood, super_neighborhood, reviews_neighborhood)[neigh_group_factor] ~ dmvnormNC(sigma_neigh, Rho_neigh),
     sigma_city ~ dcauchy(0, 2),
     sigma_neigh ~ dcauchy(0, 2),
     Rho_city ~ dlkjcorr(2),
@@ -164,10 +172,12 @@ bedBathAcomHostReviewsVary <- map2stan(
 
 precis(bedBathAcomHostReviewsVary, depth = 2)
 
+save(bedBathAcomHostReviewsVary, "Data/RData/bedBathAcomHostReviewsVary.RDS")
+
 compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed, bedBathAcomVary, bedBathAcomHostReviewsVary)
 ```
 
-```{r}
+```{r eval=F}
 
 #This chunk will be the code to run for a fixed effect model with a predictor for room type as well as all the predictors, bed, bath, and acom
 threecities$Entireplace <- ifelse(threecities$room_type == "Entire home/apt", 1, 0)
