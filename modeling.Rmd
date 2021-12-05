@@ -6,7 +6,7 @@ output: word_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(rethinking)
-setwd("~/BayesianHierarchicalModel")
+setwd("/Users/pollackm/OneDrive - Grinnell College/Documents/BayesianHierarchicalModel")
 data <- read.csv("Data/merged.csv")
 data <- data[!is.na(data$price),]
 data$city_factor <- as.integer(as.factor(data$city))
@@ -57,8 +57,6 @@ save(varyIntercept, file="Data/RData/varyIntercept.RDS")
 compare(noHierarch, varyIntercept)
 ```
 
-```{r}
-```
 
 ```{r}
 #This chunk will be the code to run for a fixed effect model with predictors
@@ -111,9 +109,32 @@ save(mreviewsfixed, file="Data/RData/mreviewsfixed.RDS")
 compare(noHierarch, varyIntercept, bedBathAcomFixed, mreviewsfixed)
 ```
 
+```{r}
+#now also add room type
+data$room_type <- as.numeric(as.factor(data$room_type))
+bigFixed <- map2stan(
+  alist(
+    price ~ dnorm(mu, sigma),
+    mu <- alpha + alpha_city[city_factor] + alpha_neighborhood[neigh_group_factor] + 
+      bBedrooms * bedrooms + bBath * bathrooms + bBeds * beds + bRoom[room_type],
+    alpha ~ dnorm(0, 200),
+    alpha_city[city_factor] ~ dnorm(0, sigma_city),
+    alpha_neighborhood[neigh_group_factor] ~ dnorm(0, sigma_neigh),
+    sigma_city ~ dcauchy(0, 2),
+    bBath ~ dnorm(10, 20),
+    bBedrooms ~ dnorm(10, 20),
+    bBeds ~ dnorm(10, 20),
+    bRoom[room_type] ~ dnorm(0, 40),
+    sigma_neigh ~ dcauchy(0, 2),
+    sigma ~ dcauchy (0, 2)
+  ),
+  data = data, chains = 1, warmup = 1000, iter = 4000, cores = 1
+)
+```
+
 
 ```{r}
-bedBathAcomVary <- map2stan(
+bedroomBathBedVary <- map2stan(
   alist(
     price ~ dnorm(mu, sigma),
     mu <- A + BEDROOM*bedroom + BATH*bath + BED*bed,
